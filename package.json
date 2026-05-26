@@ -26,7 +26,7 @@
     "dev:api": "npm run dev -w @uk-energy/api",
     "dev:web": "npm run dev -w @uk-energy/web",
     "sam:build": "PROJECT_ROOT=\"$PWD\" sam build --template infrastructure/template.yaml",
-    "sam:local": "PROJECT_ROOT=\"$PWD\" sam local start-api --template infrastructure/template.yaml --env-vars infrastructure/env.local.json --warm-containers EAGER",
+    "sam:local": "PROJECT_ROOT=\"$PWD\" sam local start-api --env-vars infrastructure/env.local.json --warm-containers EAGER",
     "sam:validate": "sam validate --template infrastructure/template.yaml --lint",
     "sam:deploy": "PROJECT_ROOT=\"$PWD\" sam deploy --config-file infrastructure/samconfig.toml",
     "deploy:web": "npm run build:web && bash scripts/deploy-web.sh",
