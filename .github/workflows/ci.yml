@@ -236,12 +236,26 @@ jobs:
       - name: SAM build
         run: PROJECT_ROOT="$PWD" sam build --template infrastructure/template.yaml
 
+      # samconfig.toml is gitignored (it contains environment-specific
+      # parameter overrides), so the CI runner can't read it. We pass the
+      # parameters explicitly here. For a real multi-env setup, lift these
+      # into GitHub repo variables and reference them with `vars.*`.
       - name: SAM deploy
         run: |
           PROJECT_ROOT="$PWD" sam deploy \
-            --config-file infrastructure/samconfig.toml \
+            --stack-name uk-energy-insights-dev \
+            --region eu-west-2 \
+            --resolve-s3 \
+            --s3-prefix uk-energy-insights-dev \
+            --capabilities CAPABILITY_IAM \
             --no-confirm-changeset \
-            --no-fail-on-empty-changeset
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              Environment=dev \
+              GeminiKeyParamName=/uk-energy/dev/GEMINI_API_KEY \
+              EntsoeKeyParamName=/uk-energy/dev/ENTSOE_API_KEY \
+              AllowedOrigin=https://dwkms8s8b0nwk.cloudfront.net \
+              GeminiDailyBudgetUsd=0.50
 
   # ---------------------------------------------------------------------------
   # 7. deploy-web — S3 sync + CloudFront invalidation. Runs ONLY on main
