@@ -37,8 +37,10 @@ npm-debug.log*
 .env
 .env.*
 !.env.example
-infrastructure/env.local.json
 samconfig.toml
+# Note: infrastructure/env.local.json is intentionally tracked — it contains
+# only SAM-local defaults (model id, rate limits, placeholder strings).
+# Real GEMINI_API_KEY comes from the shell env when running `sam local`.
 
 # Promptfoo
 ai/evals/results/
