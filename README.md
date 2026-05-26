@@ -330,18 +330,20 @@ Full list with comments: `.env.example` + `infrastructure/template.yaml` (Global
 
 ## Infrastructure cost
 
-| Item                                      | Free-tier headroom             | Cost @ ~1k DAU                                     |
-| ----------------------------------------- | ------------------------------ | -------------------------------------------------- |
-| Lambda (Node 22 arm64, 512MB, ~250ms avg) | 1M req/mo free, 400k GB-s free | ~$0.20/mo                                          |
-| API Gateway REST                          | 1M req/mo for 12 months        | ~$3.50/mo                                          |
-| DynamoDB on-demand                        | 25 GB free, 25 RCU + 25 WCU    | ~$1/mo                                             |
-| S3 (SPA, ~7 MiB)                          | 5 GB free                      | $0.00                                              |
-| CloudFront (PriceClass_100, US+EU+CA)     | 1 TB egress + 10M req free     | ~$1/mo                                             |
-| CloudWatch Logs                           | 5 GB ingest free               | ~$0.50/mo                                          |
-| **Gemini 3.1 Flash-Lite**                 | 500 RPD on free tier           | Free up to ~500 calls/day; paid tier ~$0.0008/call |
-| **Total monthly**                         | **$0** for the demo workload   | **~$6/mo** at 1k DAU                               |
+Numbers below are calculated against eu-west-2 pricing (Lambda arm64 = $0.0000133334/GB-s, API Gateway REST = $3.50/M req, DynamoDB on-demand = $1.25/M writes + $0.25/M reads, CloudFront PriceClass_100 = $0.085/GB after the 1 TB/year free tier). Free-tier columns marked **permanent** never expire; the other free tiers run for the first 12 months of the AWS account.
 
-The `GEMINI_DAILY_BUDGET_USD` kill-switch hard-stops AI calls at $0.50/day, so worst-case cost is bounded even under abuse.
+| Item                                      | Free-tier headroom                   | Cost @ 100 DAU | Cost @ 1k DAU (after free-tier expiry) |
+| ----------------------------------------- | ------------------------------------ | -------------- | -------------------------------------- |
+| Lambda (Node 22 arm64, 512 MB, ~1.5s avg) | 1M req + 400k GB-s **permanent**     | $0             | < $0.10 (well inside permanent tier)   |
+| API Gateway REST                          | 1M req/mo for 12 months              | $0             | ~$0.50                                 |
+| DynamoDB on-demand                        | 25 GB storage **permanent**          | < $0.10        | ~$0.50                                 |
+| S3 (SPA, ~7 MiB)                          | 5 GB · 20k GET · 2k PUT (12 mo)      | $0             | $0                                     |
+| CloudFront (PriceClass_100, US+EU+CA)     | 1 TB egress + 10M req (12 mo)        | $0             | ~$2.50                                 |
+| CloudWatch (logs + 4 alarms)              | 5 GB ingest **permanent**            | $0             | ~$0.40                                 |
+| **Gemini 3.1 Flash-Lite**                 | 500 RPD ≈ 15k calls/mo **permanent** | $0             | **≤ $15/mo** (kill-switch hard cap)    |
+| **Total**                                 | **$0** for the demo workload         | ~$0.10/mo      | **≤ $20/mo cap**                       |
+
+The Gemini line is the dominant cost driver. The `GEMINI_DAILY_BUDGET_USD=0.50` env var hard-stops AI calls at $0.50/day → **$15/mo absolute ceiling** for AI. Even under sustained traffic or abuse, total AWS + AI bill cannot exceed ~$20/month. Below that ceiling, real workload @ 1k DAU with our ~40% cache hit rate lands closer to ~$7-10/month.
 
 ---
 
