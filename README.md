@@ -103,7 +103,9 @@ make dev
 
 Stops with `make docker-down`.
 
-### Path C. Local with `sam local start-api`
+### Path C. Verify SAM IaC + API via `sam local start-api`
+
+Use this path when you want to **exercise the SAM template** itself and **hit the API endpoints with `curl`**. This is _API-only_ verification — for the combined SPA + API experience use **Path B (docker compose)**, which gives a cleaner local stack without the SAM rapid runtime + Vite proxy double-buffering edge cases.
 
 **Prereqs:** SAM CLI, Docker, Node 22, Gemini key in shell env.
 
@@ -114,11 +116,17 @@ make install
 export GEMINI_API_KEY=AIza...
 make sam-build
 make sam-local                   # API on http://localhost:3000
-# In another shell:
-cd apps/web && npm run dev       # SPA on http://localhost:5173
 ```
 
-`infrastructure/env.local.json` already overrides `GEMINI_KEY_PARAM` → `GEMINI_API_KEY` so SSM is not consulted.
+In another shell, hit the endpoints directly:
+
+```bash
+curl -s http://localhost:3000/api/health | jq
+curl -s "http://localhost:3000/api/insights/trends?region=GB-LON" | jq
+curl -s "http://localhost:3000/api/recommendations?goal=ev-charge&kwh=40&deadline=2026-05-27T07:00:00Z&region=GB-LON&preferences=low-carbon" | jq
+```
+
+`infrastructure/env.local.json` (tracked in git, no secrets) overrides `GEMINI_KEY_PARAM` → `GEMINI_API_KEY` so SSM is not consulted in local mode.
 
 ### Path D. Deploy to your own AWS account
 
