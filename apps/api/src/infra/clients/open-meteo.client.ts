@@ -42,7 +42,7 @@ export interface OpenMeteoClientOptions {
 export function createOpenMeteoClient(options: OpenMeteoClientOptions = {}): OpenMeteoClient {
   const baseUrl = options.baseUrl ?? BASE_URL;
   const httpFetch = options.fetchImpl ?? fetch;
-  const retryAttempts = options.retryAttempts ?? 3;
+  const retryAttempts = options.retryAttempts ?? 2;
 
   return {
     fetch48hForecast: (region) =>

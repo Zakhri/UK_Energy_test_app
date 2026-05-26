@@ -47,7 +47,11 @@ Globals:
     Runtime: nodejs22.x
     Architectures: [arm64]
     MemorySize: 512
-    Timeout: 15
+    # 20s headroom for: 2-attempt upstream retry (~0.5s backoff) + Gemini
+    # call (P95 ≈ 9s, observed worst-case 12s) + DynamoDB writes. APIGW REST
+    # tops out at 29s; 20s leaves a 9s safety margin and matches the worst
+    # latency we've seen end-to-end + slack for cold starts.
+    Timeout: 20
     LoggingConfig:
       LogFormat: JSON
       ApplicationLogLevel: INFO
