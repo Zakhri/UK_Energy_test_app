@@ -14,6 +14,11 @@ Serverless AI advisor that tells a UK household **when to run energy-heavy appli
 - **AI** Six-layer defence pipeline: input guard → cache → Gemini → deterministic validator → confidence scorer → telemetry. The deterministic window optimiser picks the windows; the AI writes the narrative around them.
 - **148 unit tests** (105 backend + 43 frontend) + **Promptfoo eval suite** + **GitHub Actions CI/CD with auto-deploy** to AWS.
 
+## Documentation
+
+- 📄 **[docs/MONITORING.md](./docs/MONITORING.md)** — telemetry envelope, `/api/metrics/ai` schema, CloudWatch filters, the four alarms worth paging on.
+- 📄 **[docs/NEXT-STEPS.md](./docs/NEXT-STEPS.md)** — prioritised backlog, AI quality TODOs, Elexon BMRS plan, production hardening, the F28 ENTSO-E / Brexit disclosure.
+
 ---
 
 ## Architecture
@@ -282,7 +287,7 @@ The deterministic window optimiser (`apps/api/src/application/_lib/find-optimal-
 
 Each upstream client is wrapped in `withRetry` (3 attempts, exponential + jitter), `sharedCircuitBreaker` (opens after 3 failures in 60s, half-open probe after 30s), and `withCache` (DynamoDB).
 
-**ENTSO-E + Brexit caveat.** After 2021-01-01 the ENTSO-E Transparency Platform stopped publishing GB BZN day-ahead prices (UK left EU electricity market coupling). The client correctly receives `Acknowledgement_MarketDocument code 999: No matching data found` and falls back to a bundled synthetic UK curve from `data/synthetic-prices.json`. The response is marked `meta.degraded: true` and the UI shows "Prices shown are synthetic estimates, not your tariff." For real GB prices, the next step is an **Elexon BMRS** client (see `docs/NEXT-STEPS.md`).
+**ENTSO-E + Brexit caveat.** After 2021-01-01 the ENTSO-E Transparency Platform stopped publishing GB BZN day-ahead prices (UK left EU electricity market coupling). The client correctly receives `Acknowledgement_MarketDocument code 999: No matching data found` and falls back to a bundled synthetic UK curve from `data/synthetic-prices.json`. The response is marked `meta.degraded: true` and the UI shows "Prices shown are synthetic estimates, not your tariff." For real GB prices, the next step is an **Elexon BMRS** client (see [docs/NEXT-STEPS.md](./docs/NEXT-STEPS.md)).
 
 ---
 
@@ -311,7 +316,7 @@ Full list with comments: `.env.example` + `infrastructure/template.yaml` (Global
 
 ## Privacy notice
 
-**Gemini free-tier prompts and responses are used by Google for model training. There is no opt-out on the free tier.** Do not send PII or sensitive household data through the live demo. L1 guard strips obvious PII (postcodes → outward only, e-mails masked), but the only way to fully prevent training-data ingestion is to switch to the paid Gemini tier or Vertex AI (see `docs/NEXT-STEPS.md`).
+**Gemini free-tier prompts and responses are used by Google for model training. There is no opt-out on the free tier.** Do not send PII or sensitive household data through the live demo. L1 guard strips obvious PII (postcodes → outward only, e-mails masked), but the only way to fully prevent training-data ingestion is to switch to the paid Gemini tier or Vertex AI (see [docs/NEXT-STEPS.md](./docs/NEXT-STEPS.md)).
 
 ---
 
@@ -334,7 +339,7 @@ The `GEMINI_DAILY_BUDGET_USD` kill-switch hard-stops AI calls at $0.50/day, so w
 
 ## What deliberately skipped
 
-- **AWS Cognito auth.** The app is a stateless calculator-style tool — no user data persisted, no per-user quotas needed for a demo. Cognito would add deployment friction without product value. For multi-tenant rollout it's the first item in `docs/NEXT-STEPS.md`.
+- **AWS Cognito auth.** The app is a stateless calculator-style tool — no user data persisted, no per-user quotas needed for a demo. Cognito would add deployment friction without product value. For multi-tenant rollout it's the first item in [docs/NEXT-STEPS.md](./docs/NEXT-STEPS.md).
 - **AWS WAF / per-IP rate-limit.** API Gateway throttling (5 rps sustained, 10 burst) + the daily AI budget kill-switch cap actual abuse cost at $0.50/day. WAF is documented as a production-readiness add-on.
 - **Inline LLM-as-judge on hot path.** The deterministic L4 validator catches ~70% of issues without an extra Gemini call. Promptfoo runs offline as the LLM-judge layer (nightly + on AI-relevant PRs).
 - **Screen recording / screenshots.** The deployed URL above satisfies the "Working demo" requirement directly.
@@ -359,7 +364,7 @@ Before turning this on for real users I would add: **Cognito + per-user rate lim
 
 ### If I had more time
 
-The single most valuable next feature is **tariff-aware optimisation** — wire the Octopus Agile API so users on dynamic tariffs see their actual half-hourly prices instead of the day-ahead curve. Second, **heat-pump-specific scheduling** that respects the COP curve vs outdoor temperature (a heat pump's "best window" is qualitatively different from an EV's). Third, **personalised recommendations using the `/api/feedback` data** once enough thumbs-up/down accumulate — RLHF-ready prompt tuning rather than full fine-tuning. Fourth, **a semantic embedding cache** once the SHA-256 hash hit-rate drops below 25% (currently ~40% locally — the bar isn't there yet). Fifth, **a voice / WhatsApp interface** via Twilio so the system meets users where they already make these decisions, not in a browser tab. Full backlog: `docs/NEXT-STEPS.md`.
+The single most valuable next feature is **tariff-aware optimisation** — wire the Octopus Agile API so users on dynamic tariffs see their actual half-hourly prices instead of the day-ahead curve. Second, **heat-pump-specific scheduling** that respects the COP curve vs outdoor temperature (a heat pump's "best window" is qualitatively different from an EV's). Third, **personalised recommendations using the `/api/feedback` data** once enough thumbs-up/down accumulate — RLHF-ready prompt tuning rather than full fine-tuning. Fourth, **a semantic embedding cache** once the SHA-256 hash hit-rate drops below 25% (currently ~40% locally — the bar isn't there yet). Fifth, **a voice / WhatsApp interface** via Twilio so the system meets users where they already make these decisions, not in a browser tab. Full backlog: [docs/NEXT-STEPS.md](./docs/NEXT-STEPS.md).
 
 ---
 
