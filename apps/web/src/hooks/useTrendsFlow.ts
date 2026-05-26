@@ -22,9 +22,12 @@ export function useTrendsFlow({
 }: UseTrendsFlowOptions): UseTrendsFlowResult {
   const { mutate, data, error, isPending } = useTrendsMutation();
   const [lastQuery, setLastQuery] = useState<{ region: RegionCode } | null>(null);
+  const liftedDataRef = useRef<typeof data | null>(null);
 
   useEffect(() => {
     if (!data || data.refused || !lastQuery) return;
+    if (liftedDataRef.current === data) return;
+    liftedDataRef.current = data;
     onResult({
       kind: 'trends',
       id: newResultId(),

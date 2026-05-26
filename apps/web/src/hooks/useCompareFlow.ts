@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CompareBody } from '@uk-energy/shared';
 
 import {
@@ -33,9 +33,12 @@ export function useCompareFlow({ onResult }: UseCompareFlowOptions): UseCompareF
   const [scenarios, setScenarios] = useState<ScenarioRow[]>(() => buildStarterScenarios());
   const [weights, setWeights] = useState<CriteriaWeights>(DEFAULT_WEIGHTS);
   const [submittedScenarios, setSubmittedScenarios] = useState<ScenarioRow[]>([]);
+  const liftedDataRef = useRef<typeof data | null>(null);
 
   useEffect(() => {
     if (!data || data.refused || !lastQuery) return;
+    if (liftedDataRef.current === data) return;
+    liftedDataRef.current = data;
     onResult({
       kind: 'compare',
       id: newResultId(),

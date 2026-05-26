@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RecommendationsQuery } from '@uk-energy/shared';
 
 import { newResultId, type RecommendResult } from '../state/lastResult.js';
@@ -23,9 +23,12 @@ export function useRecommendationFlow({
 }: UseRecommendationFlowOptions): UseRecommendationFlowResult {
   const { trigger, data, error, isPending, stage } = useStreamingRecommendations();
   const [lastQuery, setLastQuery] = useState<RecommendationsQuery | null>(null);
+  const liftedDataRef = useRef<typeof data | null>(null);
 
   useEffect(() => {
     if (!data || data.refused || !lastQuery) return;
+    if (liftedDataRef.current === data) return;
+    liftedDataRef.current = data;
     onResult({
       kind: 'recommend',
       id: newResultId(),

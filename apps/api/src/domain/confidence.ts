@@ -41,8 +41,10 @@ export interface ScoreInput {
   readonly externalCaveats?: readonly string[];
 }
 
+const FRESHNESS_HORIZON_MINUTES = 60;
+
 export function computeConfidence(input: ScoreInput): ConfidenceScore {
-  const dataFreshness = clamp01(1 - input.dataAgeMinutes / 30);
+  const dataFreshness = clamp01(1 - input.dataAgeMinutes / FRESHNESS_HORIZON_MINUTES);
   const contextCoverage =
     input.requiredFieldsTotal === 0
       ? 0
@@ -92,7 +94,7 @@ function buildCaveats(components: ConfidenceComponents, input: ScoreInput): read
   const caveats: string[] = [...(input.externalCaveats ?? [])];
   if (components.dataFreshness < 0.5) {
     caveats.push(
-      `Upstream data is ${Math.round(input.dataAgeMinutes)} minutes old — accuracy degrades after 30 minutes`,
+      `Upstream data is ${Math.round(input.dataAgeMinutes)} minutes old — UK upstream feeds refresh every 30–60 minutes`,
     );
   }
   if (components.contextCoverage < 0.7) {

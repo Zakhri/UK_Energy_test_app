@@ -1,5 +1,7 @@
-import { Lightbulb, Scale, TrendingUp } from 'lucide-react';
+import { Lightbulb, MapPin, Scale, TrendingUp } from 'lucide-react';
+import type { RegionCode } from '@uk-energy/shared';
 
+import { regionLabelFor } from '../DashboardHeader/_lib/regionOptions.js';
 import { cn } from '../../lib/cn.js';
 import type { StoredEntry } from '../../state/storage.js';
 import { goalLabel, relativeTime } from './_lib/formatPreview.js';
@@ -12,6 +14,7 @@ interface RecentItemProps {
 
 export function RecentItem({ entry, active, onRerun }: RecentItemProps) {
   const view = viewForEntry(entry);
+  const region = regionLabelFor(regionForEntry(entry));
   return (
     <li>
       <button
@@ -39,12 +42,23 @@ export function RecentItem({ entry, active, onRerun }: RecentItemProps) {
           <span className="text-slate-400">{relativeTime(entry.recordedAt)}</span>
         </div>
 
+        <div className="mb-1 flex items-center gap-1 text-[10px] text-slate-500">
+          <MapPin className="h-2.5 w-2.5 text-slate-400" />
+          <span>{region}</span>
+        </div>
+
         <p className="line-clamp-2 text-[11px] leading-relaxed text-slate-500 group-hover:text-slate-700">
           {entry.preview.summary}
         </p>
       </button>
     </li>
   );
+}
+
+function regionForEntry(entry: StoredEntry): RegionCode {
+  if (entry.kind === 'recommend') return entry.query.region;
+  if (entry.kind === 'compare') return entry.query.region as RegionCode;
+  return entry.query.region;
 }
 
 function viewForEntry(entry: StoredEntry): {
@@ -73,7 +87,7 @@ function viewForEntry(entry: StoredEntry): {
   return {
     Icon: TrendingUp,
     kindLabel: 'Trend',
-    tag: `${entry.query.region}`,
+    tag: 'Today vs week',
     pillClass: 'bg-amber-50 text-amber-800',
   };
 }
