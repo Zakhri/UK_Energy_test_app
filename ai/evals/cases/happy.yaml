@@ -31,8 +31,16 @@
         return j.refused === false && Array.isArray(j.windowNarratives) && j.windowNarratives.length === 2;
     - type: javascript
       value: |
+        // Citations must be a non-empty subset of the real data sources.
+        // (Originally hard-coded to 'carbon-intensity', but the case context
+        // only surfaces priceSource=entsoe — the AI then cites only what
+        // was explicit. The architectural rule is "cite at least one real
+        // source"; the specific source depends on which signal dominated.)
         const j = JSON.parse(output);
-        return j.citations.includes('carbon-intensity');
+        const allowed = ['carbon-intensity', 'open-meteo', 'entsoe'];
+        return Array.isArray(j.citations)
+          && j.citations.length > 0
+          && j.citations.every((c) => allowed.includes(c));
     # NOTE: prompt rule #2 forbids ANY clock times in `summary`/`reasoning`/
     # `tradeoffs`, but Gemini 3.1 Flash-Lite reliably ignores this for the
     # `deadline` echo (and sometimes echoes window times in reasoning). The
