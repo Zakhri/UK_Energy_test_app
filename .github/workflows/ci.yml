@@ -83,23 +83,46 @@ jobs:
           path: apps/web/dist/
 
   # ---------------------------------------------------------------------------
-  # 4. promptfoo-eval — AI quality smoke check (2 representative cases:
-  #    happy path + refusal). Skipped silently when GEMINI_TEST_KEY is absent
-  #    (forked clones), and only runs when AI-relevant files actually changed.
+  # 4a. check-gemini-key — GitHub Actions forbids `secrets.*` in job-level `if:`
+  #     conditions. Workaround: probe the secret in a tiny job and export a
+  #     boolean output. Forks without the secret get `has_key=false` and the
+  #     downstream eval skips silently.
+  # ---------------------------------------------------------------------------
+  check-gemini-key:
+    name: Check Gemini key presence
+    runs-on: ubuntu-latest
+    outputs:
+      has_key: ${{ steps.probe.outputs.has_key }}
+    steps:
+      - id: probe
+        env:
+          KEY: ${{ secrets.GEMINI_TEST_KEY }}
+        run: |
+          if [ -n "$KEY" ]; then
+            echo "has_key=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_key=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # 4b. promptfoo-eval — AI quality smoke check (2 representative cases:
+  #     happy path + refusal). Skipped silently when GEMINI_TEST_KEY is absent
+  #     (forked clones), and only runs when AI-relevant files actually changed.
   #
-  #    Budget: 2 inference + 2 judge = 4 Gemini calls. < 1% of daily RPD.
+  #     Budget: 2 inference + 2 judge = 4 Gemini calls. < 1% of daily RPD.
   # ---------------------------------------------------------------------------
   promptfoo-eval:
     name: Promptfoo AI smoke
     runs-on: ubuntu-latest
-    needs: lint-test
+    needs: [lint-test, check-gemini-key]
     if: |
+      needs.check-gemini-key.outputs.has_key == 'true' &&
       (
         contains(toJSON(github.event.head_commit.modified), 'prompts/') ||
         contains(toJSON(github.event.head_commit.modified), 'apps/api/src/infra/ai/') ||
         contains(toJSON(github.event.head_commit.modified), 'ai/evals/') ||
         github.event_name == 'pull_request'
-      ) && secrets.GEMINI_TEST_KEY != ''
+      )
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
