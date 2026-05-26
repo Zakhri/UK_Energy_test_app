@@ -1,10 +1,7 @@
-import { readFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 import { XMLParser } from 'fast-xml-parser';
 import { z } from 'zod';
 
+import syntheticPricesData from '../../../../../data/synthetic-prices.json';
 import type { DayAheadPriceCurve, DayAheadPricePoint, UkRegionCode } from '../../domain/energy.js';
 import { logger } from '../logger.js';
 import { sharedCircuitBreaker } from './_lib/circuit-breaker.js';
@@ -23,16 +20,11 @@ const syntheticSchema = z.object({
   halfHourlyProfile: z.array(z.number()).length(48),
 });
 
-let syntheticProfile: number[] | null = null;
+const SYNTHETIC_PROFILE: readonly number[] =
+  syntheticSchema.parse(syntheticPricesData).halfHourlyProfile;
 
-async function loadSyntheticProfile(): Promise<number[]> {
-  if (syntheticProfile) return syntheticProfile;
-  const here = dirname(fileURLToPath(import.meta.url));
-  const dataPath = resolve(here, '../../../../../data/synthetic-prices.json');
-  const raw = await readFile(dataPath, 'utf8');
-  const parsed = syntheticSchema.parse(JSON.parse(raw));
-  syntheticProfile = parsed.halfHourlyProfile;
-  return syntheticProfile;
+async function loadSyntheticProfile(): Promise<readonly number[]> {
+  return SYNTHETIC_PROFILE;
 }
 
 const pointSchema = z.object({

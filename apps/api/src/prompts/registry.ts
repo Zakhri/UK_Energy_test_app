@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -14,8 +14,16 @@ export interface PromptRegistry {
 
 const here = dirname(fileURLToPath(import.meta.url));
 
+function resolvePromptsDir(version: string): string {
+  const sourceCandidate = resolve(here, version);
+  if (existsSync(resolve(sourceCandidate, 'system.md'))) return sourceCandidate;
+  const bundledCandidate = resolve(here, 'prompts', version);
+  if (existsSync(resolve(bundledCandidate, 'system.md'))) return bundledCandidate;
+  throw new Error(`Prompt templates not found for version "${version}"`);
+}
+
 function loadTemplates(version: string): Record<PromptTemplate, string> {
-  const directory = resolve(here, version);
+  const directory = resolvePromptsDir(version);
   return {
     system: readFileSync(resolve(directory, 'system.md'), 'utf8'),
     'recommendations.user': readFileSync(resolve(directory, 'recommendations.user.md'), 'utf8'),
@@ -66,7 +74,6 @@ export function getPromptRegistry(version = process.env.PROMPT_VERSION ?? 'v1'):
   return registry;
 }
 
-/** Test-only: drop the cached registry. */
 export function __resetPromptRegistry(): void {
   cache.clear();
 }

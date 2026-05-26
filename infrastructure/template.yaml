@@ -104,23 +104,6 @@ Resources:
           ThrottlingBurstLimit: 10
           ThrottlingRateLimit: 5
           MetricsEnabled: true
-      GatewayResponses:
-        DEFAULT_4XX:
-          ResponseTemplates:
-            application/json: |
-              {"type":"about:blank","title":"$context.error.responseType","status":$context.error.statusCode,"detail":"$context.error.message","instance":"$context.requestId"}
-          ResponseParameters:
-            Headers:
-              Content-Type: "'application/problem+json'"
-              Access-Control-Allow-Origin: !Sub "'${AllowedOrigin}'"
-        DEFAULT_5XX:
-          ResponseTemplates:
-            application/json: |
-              {"type":"about:blank","title":"Internal Server Error","status":500,"detail":"$context.error.message","instance":"$context.requestId"}
-          ResponseParameters:
-            Headers:
-              Content-Type: "'application/problem+json'"
-              Access-Control-Allow-Origin: !Sub "'${AllowedOrigin}'"
       Tags:
         project: uk-energy-insights
         env: !Ref Environment
@@ -131,7 +114,7 @@ Resources:
     Properties:
       FunctionName: !Sub 'uk-energy-api-${Environment}'
       CodeUri: ../apps/api/
-      Handler: src/api.handler
+      Handler: api.handler
       Description: UK Energy Insights API — Hono lambdalith
       Environment:
         Variables:
@@ -182,21 +165,7 @@ Resources:
             Path: /
             Method: ANY
     Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        Format: esm
-        Target: es2022
-        Sourcemap: true
-        Minify: true
-        EntryPoints:
-          - src/api.ts
-        OutExtension:
-          - .js=.mjs
-        External:
-          - '@aws-sdk/*'
-          - 'aws-sdk'
-        Banner:
-          js: "import { createRequire as topLevelCreateRequire } from 'module'; const require = topLevelCreateRequire(import.meta.url);"
+      BuildMethod: makefile
 
   # ----- S3 bucket hosting the React SPA build artefacts.
   # No public ACL, no public policy — CloudFront fetches via OAC (SigV4).
