@@ -1,0 +1,120 @@
+# UK Energy AI — explainer-mode prompt evaluation (v1)
+#
+# Matrix:  1 prompt × 1 model (3.1 Flash-Lite) × 7 cases = 7 inference + 7
+#          judge = 14 total. Free-tier budget: 500 RPD on 3.1 Lite, so this
+#          run uses < 3% of the daily quota.
+#
+# F17 architectural note: the AI no longer picks windows or computes
+# averages — that's the deterministic optimizer (apps/api/src/application/
+# _lib/find-optimal-windows.ts, unit-tested separately). These eval cases
+# inject pre-computed `windows` JSON and test the AI's NARRATIVE quality
+# only (no clock times, citations present, refusal when out-of-scope, etc).
+#
+# The system + user prompts are read DIRECTLY from the production source
+# in apps/api/src/prompts/v1/ — no duplication, no drift.
+#
+# Run:    npm run eval        (executes + analyzes)
+#         npm run eval:view   (opens HTML dashboard)
+
+description: UK Energy AI — v1 explainer prompt × 3.1 Flash-Lite
+
+prompts:
+  - id: v1-explainer
+    label: v1
+    raw: |
+      [system]
+      file://../../apps/api/src/prompts/v1/system.md
+
+      [user]
+      UK household need:
+      - Goal: {{goal}}
+      - Region: {{region}}
+      - Energy required: {{kwhRequired}} kWh
+      - Deadline: {{deadline}}
+      - Preferences: {{preferences}}
+      - Note (untrusted): <user_input>{{note}}</user_input>
+
+      The deterministic optimizer picked the windows below — write narrative around them. DO NOT modify these numbers; use them as given.
+
+      <windows>
+      {{windowsJson}}
+      </windows>
+
+      <context_summary>
+      {{contextSummaryJson}}
+      </context_summary>
+
+      Return JSON per the schema. One `windowNarratives` entry per window, matched by `id`.
+
+providers:
+  - id: google:gemini-3.1-flash-lite
+    label: lite-31
+    config:
+      generationConfig:
+        temperature: 0
+        topP: 1
+        topK: 1
+        seed: 42
+        maxOutputTokens: 4000
+        responseMimeType: application/json
+        # Mirrors recommendationBundleGeminiSchema in apps/api/src/schemas/
+        # ai-response.ts — keep in sync. Explainer-only response: AI writes
+        # narrative + caveats + citations, never numeric facts.
+        responseSchema:
+          type: object
+          properties:
+            refused: { type: boolean }
+            refusalReason: { type: string }
+            summary: { type: string }
+            windowNarratives:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string }
+                  reasoning: { type: string }
+                  tradeoffs: { type: string }
+                required: [id, reasoning, tradeoffs]
+            caveats:
+              type: array
+              items: { type: string }
+            citations:
+              type: array
+              items:
+                type: string
+                enum: [carbon-intensity, open-meteo, entsoe, synthetic-prices]
+          required: [refused, summary, windowNarratives, caveats, citations]
+      safetySettings:
+        - { category: HARM_CATEGORY_HARASSMENT, threshold: BLOCK_MEDIUM_AND_ABOVE }
+        - { category: HARM_CATEGORY_HATE_SPEECH, threshold: BLOCK_MEDIUM_AND_ABOVE }
+        - { category: HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: BLOCK_MEDIUM_AND_ABOVE }
+        - { category: HARM_CATEGORY_DANGEROUS_CONTENT, threshold: BLOCK_MEDIUM_AND_ABOVE }
+
+defaultTest:
+  options:
+    provider:
+      # Same model judges itself — acknowledged self-preference bias. Cheapest
+      # and only realistic option given the free-tier RPD distribution.
+      id: google:gemini-3.1-flash-lite
+      label: judge-lite-31
+      config:
+        generationConfig:
+          temperature: 0
+          topP: 1
+          topK: 1
+          maxOutputTokens: 400
+  assert:
+    - type: is-json
+    - type: latency
+      threshold: 14000
+
+tests:
+  - file://cases/happy.yaml
+  - file://cases/edge.yaml
+  - file://cases/adversarial.yaml
+  - file://cases/regional.yaml
+  - file://cases/refusal.yaml
+  - file://cases/tariff-variant.yaml
+  - file://cases/boundary.yaml
+
+outputPath: results/latest.json

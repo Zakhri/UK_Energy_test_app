@@ -1,0 +1,31 @@
+{
+  "name": "@uk-energy/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Lambda API for UK Energy & Carbon Insights — Hono + Gemini + DynamoDB",
+  "main": "src/api.ts",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx watch src/server.ts",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.717.0",
+    "@aws-sdk/client-ssm": "^3.717.0",
+    "@aws-sdk/lib-dynamodb": "^3.717.0",
+    "@hono/node-server": "^1.13.7",
+    "@uk-energy/shared": "*",
+    "fast-xml-parser": "^4.5.1",
+    "hono": "^4.6.16",
+    "pino": "^9.5.0",
+    "ulid": "^2.3.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.146",
+    "tsx": "^4.19.2"
+  }
+}

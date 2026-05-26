@@ -1,0 +1,49 @@
+# Screening case 1 of 7 — happy path.
+#
+# F17: AI is the explainer. The deterministic optimizer already picked
+# w1/w2 — eval tests whether the AI writes good prose around them, NOT
+# whether the picks themselves are correct (covered by
+# apps/api/test/unit/find-optimal-windows.spec.ts).
+
+- description: overnight low-carbon EV charging window (London)
+  vars:
+    goal: ev-charge
+    region: GB-LON
+    kwhRequired: 40
+    deadline: '2026-05-25T07:00Z'
+    preferences: 'low-carbon, avoid-peak'
+    note: '7 kW home charger'
+    windowsJson: |
+      [{"id":"w1","windowStart":"2026-05-25T02:00Z","windowEnd":"2026-05-25T06:00Z","avgCarbonGCo2":58,"avgCostPounds":0.048,"score":0.93,"priority":1},
+       {"id":"w2","windowStart":"2026-05-24T22:00Z","windowEnd":"2026-05-25T02:00Z","avgCarbonGCo2":80,"avgCostPounds":0.052,"score":0.78,"priority":2}]
+    contextSummaryJson: |
+      {"priceSource":"entsoe","dataAgeMinutes":5,"unreliableCarbonReadingsExcluded":0}
+  metadata:
+    category: happy
+    difficulty: easy
+    expectedOutcome: pass
+    tags: [ev-charge, low-carbon, london, overnight]
+  assert:
+    - type: is-json
+    - type: javascript
+      value: |
+        const j = JSON.parse(output);
+        return j.refused === false && Array.isArray(j.windowNarratives) && j.windowNarratives.length === 2;
+    - type: javascript
+      value: |
+        const j = JSON.parse(output);
+        return j.citations.includes('carbon-intensity');
+    - type: javascript
+      value: |
+        // Critical: no HH:MM clock times in AI prose — the v1 prompt rule #2.
+        const j = JSON.parse(output);
+        const blob = [j.summary, ...j.windowNarratives.flatMap(n => [n.reasoning, n.tradeoffs])].join(' ');
+        return !/\b\d{1,2}:\d{2}\b/.test(blob);
+    - type: llm-rubric
+      value: |
+        On a scale of 1-5, rate this explainer response:
+        - clarity: prose is easy for a household to act on
+        - relevance: reasoning matches the chosen window's carbon/cost profile
+        - tradeoff_honesty: tradeoffs section names a real opportunity cost
+        Output JSON: {"clarity":N,"relevance":N,"tradeoff_honesty":N,"reasoning":"..."}
+        Average ≥ 4 to pass.

@@ -1,0 +1,13 @@
+node_modules
+dist
+build
+.aws-sam
+coverage
+apps/web/dist
+*.lock
+package-lock.json
+.next
+
+# Auto-generated eval artifacts — never hand-edited; CSV not a prettier format
+docs/AI-MODEL-ROUTING.csv
+ai/evals/results/

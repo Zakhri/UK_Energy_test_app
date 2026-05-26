@@ -1,0 +1,193 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===========================================================================
+ * Base layer — light theme "Verdant"
+ * ========================================================================= */
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color-scheme: light;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    font-family: theme('fontFamily.sans');
+    color: theme('colors.slate.900');
+    background-color: theme('colors.page');
+    background-image:
+      /* Subtle radial green tint at top-left */
+      radial-gradient(ellipse 800px 600px at 0% 0%, rgba(16, 185, 129, 0.06) 0%, transparent 50%),
+      /* Subtle radial sand tint at bottom-right */
+        radial-gradient(
+          ellipse 700px 500px at 100% 100%,
+          rgba(245, 158, 11, 0.04) 0%,
+          transparent 50%
+        );
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+
+  /* Smooth typographic defaults */
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.02em;
+  }
+
+  /* Reduce motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+/* ===========================================================================
+ * Component layer — reusable Verdant patterns
+ * ========================================================================= */
+@layer components {
+  /* ------- Surfaces ------- */
+  .panel {
+    @apply rounded-2xl border border-slate-200/70 bg-surface p-6 shadow-soft;
+  }
+
+  .panel-lift {
+    @apply panel transition-all duration-200 hover:shadow-lift;
+  }
+
+  .panel-feature {
+    @apply rounded-3xl border border-slate-200/70 bg-surface p-7 shadow-soft;
+  }
+
+  .panel-heading {
+    @apply mb-4 flex items-center justify-between;
+  }
+
+  .panel-title {
+    @apply text-xs font-semibold uppercase tracking-[0.14em] text-slate-500;
+  }
+
+  .panel-subtitle {
+    @apply mt-1 text-xs text-slate-400;
+  }
+
+  /* ------- Form primitives ------- */
+  .field-label {
+    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500;
+  }
+
+  .input-base {
+    @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-inset-soft transition focus:border-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/15;
+  }
+
+  .input-base::placeholder {
+    @apply text-slate-400;
+  }
+
+  /* ------- Buttons ------- */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-emerald-800 hover:shadow-lift active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-emerald-700;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900;
+  }
+
+  .btn-icon {
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-900;
+  }
+
+  /* ------- Pills / badges ------- */
+  .pill-tile {
+    @apply flex cursor-pointer flex-col items-center gap-1.5 rounded-2xl border bg-white px-2 py-3.5 text-center text-xs transition-all duration-200;
+  }
+
+  .pill-tile--idle {
+    @apply border-slate-200/70 text-slate-600 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-soft;
+  }
+
+  .pill-tile--active {
+    @apply border-emerald-300 bg-emerald-50 text-emerald-800 shadow-ring;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 transition;
+  }
+
+  .chip--active {
+    @apply border-emerald-300 bg-emerald-50 text-emerald-800;
+  }
+
+  /* ------- Carbon-level color tokens (used in badges + chart legend) ------- */
+  .badge-carbon-low {
+    @apply inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-800;
+  }
+
+  .badge-carbon-moderate {
+    @apply inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800;
+  }
+
+  .badge-carbon-high {
+    @apply inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-medium text-orange-800;
+  }
+
+  .badge-carbon-very-high {
+    @apply inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-800;
+  }
+
+  /* ------- Status-style pill (used in ComparisonTable) ------- */
+  .status-success {
+    @apply inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-800;
+  }
+
+  .status-pending {
+    @apply inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800;
+  }
+}
+
+/* ===========================================================================
+ * Utility layer — stagger animation helper
+ * ========================================================================= */
+@layer utilities {
+  /* Apply to a container; children get progressive animation-delay via --i. */
+  .stagger > * {
+    animation-delay: calc(var(--i, 0) * 80ms);
+  }
+
+  /* Skeleton shimmer surface */
+  .skeleton-surface {
+    background: linear-gradient(90deg, #e2e8f0 0%, #f1f5f9 50%, #e2e8f0 100%);
+    background-size: 200% 100%;
+    animation: shimmer 2.4s linear infinite;
+  }
+
+  /* Visually-hidden but accessible */
+  .sr-only-focusable:not(:focus):not(:focus-within) {
+    @apply sr-only;
+  }
+
+  /* Hide native scrollbar while keeping the element scrollable.
+     Used in the middle dashboard column where:
+       1) recommendation / compare cards usually fit without scrolling,
+       2) a visible scrollbar caused a brief width "flash" on initial
+          render (Recharts measuring + font swap),
+       3) keeping scrollbar-gutter would create a width mismatch with
+          the pinned Simulated Impact chart sibling below.
+     Mouse wheel / trackpad / keyboard still scroll. The outer left + right
+     columns keep their visible scrollbars (where users actually need them). */
+  .scroll-area-quiet {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* Legacy Edge / IE */
+  }
+  .scroll-area-quiet::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+}

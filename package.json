@@ -1,0 +1,67 @@
+{
+  "name": "uk-energy-insights",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "UK Household Energy & Carbon Insights Platform — serverless AI-powered advisor",
+  "engines": {
+    "node": ">=20.18.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "npm run -ws --if-present typecheck",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage --passWithNoTests",
+    "validate": "npm run format:check && npm run lint && npm run typecheck && npm run test",
+    "build:api": "npm run build -w @uk-energy/api",
+    "build:web": "npm run build -w @uk-energy/web",
+    "dev:api": "npm run dev -w @uk-energy/api",
+    "dev:web": "npm run dev -w @uk-energy/web",
+    "sam:build": "sam build --template infrastructure/template.yaml",
+    "sam:local": "sam local start-api --template infrastructure/template.yaml --env-vars infrastructure/env.local.json --warm-containers EAGER",
+    "sam:validate": "sam validate --template infrastructure/template.yaml --lint",
+    "sam:deploy": "sam deploy --template infrastructure/template.yaml --config-file ../samconfig.toml",
+    "deploy:web": "npm run build:web && bash scripts/deploy-web.sh",
+    "e2e": "tsx scripts/frontend-e2e-test.ts",
+    "eval": "npx promptfoo eval -c ai/evals/promptfooconfig.yaml --output ai/evals/results/latest.json --max-concurrency 2 --no-progress-bar && tsx ai/evals/scripts/analyze-results.ts ai/evals/results/latest.json",
+    "eval:analyze": "tsx ai/evals/scripts/analyze-results.ts",
+    "eval:view": "npx promptfoo view",
+    "docker:up": "bash scripts/docker-up.sh",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f --tail=100",
+    "docker:rebuild": "docker compose down && bash scripts/docker-up.sh",
+    "docker:status": "docker compose ps",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/node": "^22.10.5",
+    "@typescript-eslint/eslint-plugin": "^8.20.0",
+    "@typescript-eslint/parser": "^8.20.0",
+    "@vitest/coverage-v8": "^2.1.8",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^9.1.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.4.1",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --max-warnings 0 --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  }
+}

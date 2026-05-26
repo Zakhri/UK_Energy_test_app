@@ -1,0 +1,341 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  UK Household Energy & Carbon Insights — full serverless stack.
+  Lambda (Hono lambdalith) + API Gateway + DynamoDB + S3 (SPA) + CloudFront (CDN/proxy).
+  Single CloudFront distribution serves both the React SPA (from S3 via OAC) and proxies
+  /api/* to API Gateway, so the browser only sees one origin and CORS stays simple.
+
+# ---------------------------------------------------------------------------
+# Parameters
+# ---------------------------------------------------------------------------
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+  GeminiKeyParamName:
+    Type: String
+    Default: /uk-energy/dev/GEMINI_API_KEY
+    Description: SSM Parameter Store name (SecureString) holding the Gemini API key.
+
+  EntsoeKeyParamName:
+    Type: String
+    Default: /uk-energy/dev/ENTSOE_API_KEY
+    Description: SSM Parameter Store name for ENTSO-E (optional).
+
+  AllowedOrigin:
+    Type: String
+    Default: '*'
+    Description: >
+      CORS Allow-Origin. Defaults to '*' for first-deploy convenience.
+      Browser traffic flows through CloudFront → same origin → so CORS only
+      matters if the reviewer hits the APIGW endpoint directly.
+      Tighten post-deploy via:
+        sam deploy --parameter-overrides AllowedOrigin=https://<distribution>.cloudfront.net
+
+  GeminiDailyBudgetUsd:
+    Type: String
+    Default: '0.50'
+
+# ---------------------------------------------------------------------------
+# Globals
+# ---------------------------------------------------------------------------
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Architectures: [arm64]
+    MemorySize: 512
+    Timeout: 15
+    LoggingConfig:
+      LogFormat: JSON
+      ApplicationLogLevel: INFO
+      SystemLogLevel: WARN
+    Environment:
+      Variables:
+        NODE_OPTIONS: '--enable-source-maps'
+        AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
+        LOG_LEVEL: info
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+Resources:
+  # ----- DynamoDB single-table (cache + AI log + rate-limit + circuit-breaker + feedback)
+  EnergyInsightsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'EnergyInsightsTable-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: false # dev only — enable for prod
+      Tags:
+        - Key: project
+          Value: uk-energy-insights
+        - Key: env
+          Value: !Ref Environment
+
+  # ----- API Gateway REST API (proxy-all to Lambda)
+  HttpApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref Environment
+      EndpointConfiguration:
+        Type: REGIONAL
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          ThrottlingBurstLimit: 10
+          ThrottlingRateLimit: 5
+          MetricsEnabled: true
+      GatewayResponses:
+        DEFAULT_4XX:
+          ResponseTemplates:
+            application/json: |
+              {"type":"about:blank","title":"$context.error.responseType","status":$context.error.statusCode,"detail":"$context.error.message","instance":"$context.requestId"}
+          ResponseParameters:
+            Headers:
+              Content-Type: "'application/problem+json'"
+              Access-Control-Allow-Origin: !Sub "'${AllowedOrigin}'"
+        DEFAULT_5XX:
+          ResponseTemplates:
+            application/json: |
+              {"type":"about:blank","title":"Internal Server Error","status":500,"detail":"$context.error.message","instance":"$context.requestId"}
+          ResponseParameters:
+            Headers:
+              Content-Type: "'application/problem+json'"
+              Access-Control-Allow-Origin: !Sub "'${AllowedOrigin}'"
+      Tags:
+        project: uk-energy-insights
+        env: !Ref Environment
+
+  # ----- Lambda lambdalith (single function, all routes)
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'uk-energy-api-${Environment}'
+      CodeUri: ../apps/api/
+      Handler: src/api.handler
+      Description: UK Energy Insights API — Hono lambdalith
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          DYNAMODB_TABLE: !Ref EnergyInsightsTable
+          GEMINI_KEY_PARAM: !Ref GeminiKeyParamName
+          ENTSOE_KEY_PARAM: !Ref EntsoeKeyParamName
+          # Single model — see apps/api/src/infra/ai/pricing.ts (only entry).
+          # 3.1 Flash-Lite was chosen after the multi-model eval found no other
+          # free-tier candidate worth maintaining.
+          GEMINI_PRIMARY_MODEL: 'gemini-3.1-flash-lite'
+          GEMINI_DAILY_BUDGET_USD: !Ref GeminiDailyBudgetUsd
+          GEMINI_MAX_INPUT_TOKENS: '4000'
+          # Explainer mode produces shorter outputs than the old picker
+          # mode, but kept at 4K — 3.1 Lite occasionally pads with caveats.
+          GEMINI_MAX_OUTPUT_TOKENS: '4000'
+          # Real free-tier limits observed for this project (2026-05).
+          GEMINI_RPM_LIMIT: '15'
+          GEMINI_RPD_LIMIT: '500'
+          # v1 = explainer-mode prompt. The deterministic window optimizer
+          # picks windows; the AI writes the narrative wrapper. Source of
+          # truth lives in apps/api/src/prompts/v1/ — Promptfoo evals read
+          # directly from there.
+          PROMPT_VERSION: 'v1'
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EnergyInsightsTable
+        - SSMParameterReadPolicy:
+            ParameterName: !Sub '${GeminiKeyParamName}'
+        - SSMParameterReadPolicy:
+            ParameterName: !Sub '${EntsoeKeyParamName}'
+        - Statement:
+            - Effect: Allow
+              Action: kms:Decrypt
+              Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/ssm'
+      Events:
+        Proxy:
+          Type: Api
+          Properties:
+            RestApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: ANY
+        Root:
+          Type: Api
+          Properties:
+            RestApiId: !Ref HttpApi
+            Path: /
+            Method: ANY
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Format: esm
+        Target: es2022
+        Sourcemap: true
+        Minify: true
+        EntryPoints:
+          - src/api.ts
+        OutExtension:
+          - .js=.mjs
+        External:
+          - '@aws-sdk/*'
+          - 'aws-sdk'
+        Banner:
+          js: "import { createRequire as topLevelCreateRequire } from 'module'; const require = topLevelCreateRequire(import.meta.url);"
+
+  # ----- S3 bucket hosting the React SPA build artefacts.
+  # No public ACL, no public policy — CloudFront fetches via OAC (SigV4).
+  WebBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'uk-energy-web-${Environment}-${AWS::AccountId}'
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: project
+          Value: uk-energy-insights
+        - Key: env
+          Value: !Ref Environment
+
+  # ----- OAC = SigV4 origin access control (replacement for the deprecated OAI).
+  WebOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub 'uk-energy-web-oac-${Environment}'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # ----- Bucket policy: ONLY this distribution can read.
+  WebBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontServicePrincipalReadOnly
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${WebBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                'AWS:SourceArn': !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${WebDistribution}'
+
+  # ----- CloudFront distribution.
+  # Two behaviours:
+  #   1. /api/* → API Gateway origin (no caching, forward all headers/query)
+  #   2. *     → S3 origin via OAC (cached, SPA fallback on 403/404 → /index.html)
+  WebDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub 'UK Energy Insights — ${Environment}'
+        DefaultRootObject: index.html
+        HttpVersion: http2and3
+        PriceClass: PriceClass_100 # US/EU/CA only — cheapest tier
+        IPV6Enabled: true
+        Origins:
+          - Id: s3-spa
+            DomainName: !GetAtt WebBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: '' # required-empty when using OAC
+            OriginAccessControlId: !Ref WebOAC
+          - Id: apigw
+            DomainName: !Sub '${HttpApi}.execute-api.${AWS::Region}.amazonaws.com'
+            OriginPath: !Sub '/${Environment}'
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
+        DefaultCacheBehavior:
+          TargetOriginId: s3-spa
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          # AWS-managed "CachingOptimized" policy id — well-known constant.
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: apigw
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]
+            CachedMethods: [GET, HEAD]
+            Compress: true
+            # AWS-managed "CachingDisabled" policy — never cache API responses.
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            # AWS-managed "AllViewerExceptHostHeader" origin request policy —
+            # forwards everything (cookies, headers, query) except Host.
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+        CustomErrorResponses:
+          # SPA fallback: any 403/404 from S3 (e.g. /scenario route refresh)
+          # serves index.html so React Router can handle it.
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+      Tags:
+        - Key: project
+          Value: uk-energy-insights
+        - Key: env
+          Value: !Ref Environment
+
+# ---------------------------------------------------------------------------
+# Outputs
+# ---------------------------------------------------------------------------
+Outputs:
+  ApiEndpoint:
+    Description: HTTPS endpoint for the API (direct — bypasses CloudFront)
+    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+  CloudFrontUrl:
+    Description: Browser-facing URL — serves the SPA AND proxies /api/*
+    Value: !Sub 'https://${WebDistribution.DomainName}'
+  WebBucketName:
+    Description: S3 bucket holding the React build (sync target for deploy:web)
+    Value: !Ref WebBucket
+  WebDistributionId:
+    Description: CloudFront distribution ID (invalidation target for deploy:web)
+    Value: !Ref WebDistribution
+  TableName:
+    Description: DynamoDB single-table name
+    Value: !Ref EnergyInsightsTable
+  FunctionName:
+    Description: Lambda function name
+    Value: !Ref ApiFunction

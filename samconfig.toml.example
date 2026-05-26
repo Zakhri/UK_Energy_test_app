@@ -1,0 +1,50 @@
+# samconfig.toml.example
+#
+# Copy to `samconfig.toml` and adjust before running `sam deploy --guided`.
+# The real `samconfig.toml` is gitignored (carries account-specific defaults).
+#
+# Prereq — put your Gemini key into SSM Parameter Store first:
+#
+#   aws ssm put-parameter \
+#     --name /uk-energy/dev/GEMINI_API_KEY \
+#     --type SecureString \
+#     --value <your-key-from-aistudio.google.com>
+#
+# Optional (ENTSO-E day-ahead prices — the app falls back to a bundled
+# synthetic UK price curve if this is absent and marks meta.degraded=true):
+#
+#   aws ssm put-parameter \
+#     --name /uk-energy/dev/ENTSOE_API_KEY \
+#     --type SecureString \
+#     --value <your-entsoe-key>
+
+version = 0.1
+
+[default.global.parameters]
+stack_name = "uk-energy-insights-dev"
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.validate.parameters]
+lint = true
+
+[default.deploy.parameters]
+template_file = "infrastructure/template.yaml"
+region = "eu-west-2"                          # London — closest to UK Carbon Intensity API
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true                             # let SAM manage its own bootstrap bucket
+fail_on_empty_changeset = false
+s3_prefix = "uk-energy-insights"
+parameter_overrides = """
+  Environment=dev
+  GeminiKeyParamName=/uk-energy/dev/GEMINI_API_KEY
+  EntsoeKeyParamName=/uk-energy/dev/ENTSOE_API_KEY
+  GeminiDailyBudgetUsd=0.50
+  AllowedOrigin=*
+"""
+
+# Tighten AllowedOrigin after the first deploy:
+#   sam deploy --parameter-overrides AllowedOrigin=https://<dist>.cloudfront.net

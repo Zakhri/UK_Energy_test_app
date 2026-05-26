@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+.pnp.*
+.yarn/
+
+# Build outputs
+dist/
+build/
+.aws-sam/
+.vite/
+apps/web/dist/
+
+# Testing
+coverage/
+*.lcov
+.nyc_output/
+
+# Caches
+.eslintcache
+.cache/
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+.DS_Store
+
+# Env / Secrets — NEVER COMMIT
+.env
+.env.*
+!.env.example
+infrastructure/env.local.json
+samconfig.toml
+
+# Promptfoo
+ai/evals/results/
+ai/evals/.promptfoo/
+
+# E2E reports (timestamped markdown — regenerated on every run)
+reports/
+
+# Misc
+.history
+*.tgz

@@ -1,0 +1,34 @@
+# Screening case — edge.
+#
+# F17: tests caveat-surfacing when the deterministic optimizer returns only
+# ONE window AND data freshness is degraded. The AI should explain the
+# single-recommendation limitation, not pretend to have alternatives.
+
+- description: single viable window + stale data — caveat must surface
+  vars:
+    goal: ev-charge
+    region: GB-LON
+    kwhRequired: 40
+    deadline: '2026-05-25T07:00Z'
+    preferences: low-carbon
+    note: ''
+    windowsJson: |
+      [{"id":"w1","windowStart":"2026-05-25T02:00Z","windowEnd":"2026-05-25T06:00Z","avgCarbonGCo2":58,"avgCostPounds":0.048,"score":0.5,"priority":1}]
+    contextSummaryJson: |
+      {"priceSource":"entsoe","dataAgeMinutes":47,"unreliableCarbonReadingsExcluded":2}
+  metadata:
+    category: edge
+    difficulty: medium
+    expectedOutcome: degraded
+    tags: [single-window, stale-data, caveat]
+  assert:
+    - type: is-json
+    - type: javascript
+      value: |
+        const j = JSON.parse(output);
+        return Array.isArray(j.caveats) && j.caveats.length >= 1;
+    - type: javascript
+      value: |
+        // Single window provided → AI should return exactly one narrative.
+        const j = JSON.parse(output);
+        return j.windowNarratives.length === 1;

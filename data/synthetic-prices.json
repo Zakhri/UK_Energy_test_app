@@ -1,0 +1,11 @@
+{
+  "description": "Synthetic UK day-ahead wholesale electricity prices (24h profile, GBP/MWh).",
+  "license": "Bundled with the project as a fallback when ENTSO-E API access is unavailable. Values are illustrative and based on typical 2025 UK day-ahead curves: night trough (~£40), morning ramp (~£90), evening peak (~£140-180).",
+  "currency": "GBP",
+  "unit": "GBP per MWh",
+  "halfHourlyProfile": [
+    42, 41, 40, 38, 37, 36, 36, 38, 42, 48, 56, 65, 78, 88, 95, 100, 102, 100, 95, 90, 88, 85, 86,
+    90, 95, 102, 110, 120, 132, 145, 158, 168, 172, 175, 170, 162, 152, 140, 128, 115, 102, 92, 82,
+    74, 68, 62, 56, 50
+  ]
+}

@@ -1,0 +1,65 @@
+# docker-compose.yml — local test stack for UK Energy & Carbon Insights
+#
+# Single command:  npm run docker:up   (or: docker compose up --build -d)
+#
+# Reads env vars from .env at the repo root.
+#   Required: GEMINI_API_KEY
+#   Optional: ENTSOE_API_KEY (synthetic fallback when absent)
+#
+# Services:
+#   - api : Node 22 Hono server on :3000 (in-memory cache, no DynamoDB needed)
+#   - web : nginx serving the built React SPA on :5173, proxies /api/* → api:3000
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: uk-energy-api
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      ENVIRONMENT: docker
+      ALLOWED_ORIGIN: '*'
+      DYNAMODB_TABLE: local-table
+      LOG_LEVEL: info
+      # v1 = explainer-mode prompt (post-F17). The deterministic window
+      # optimizer picks windows; the AI writes the narrative wrapper.
+      # See apps/api/src/prompts/v1/system.md for the contract.
+      PROMPT_VERSION: v1
+      # ---- AI ----
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?GEMINI_API_KEY must be set in .env}
+      # Only model we provision — see apps/api/src/infra/ai/pricing.ts
+      GEMINI_PRIMARY_MODEL: gemini-3.1-flash-lite
+      GEMINI_DAILY_BUDGET_USD: '0.50'
+      GEMINI_MAX_INPUT_TOKENS: '4000'
+      # Explainer mode produces shorter outputs (no per-window numeric
+      # fields), but kept at 4K — 3.1 Lite occasionally pads with caveats.
+      GEMINI_MAX_OUTPUT_TOKENS: '4000'
+      # Real free-tier limits observed for this project (2026-05).
+      GEMINI_RPM_LIMIT: '15'
+      GEMINI_RPD_LIMIT: '500'
+      # ---- ENTSO-E (synthetic fallback if missing) ----
+      ENTSOE_API_KEY: ${ENTSOE_API_KEY:-}
+      ENTSOE_AREA_CODE: 10Y1001A1001A92E
+    ports:
+      - '3000:3000'
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3000/api/health']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: uk-energy-web
+    ports:
+      - '5173:80'
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped

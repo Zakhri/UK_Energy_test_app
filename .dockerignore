@@ -1,0 +1,41 @@
+# Build artefacts
+node_modules
+**/node_modules
+**/dist
+**/.aws-sam
+**/coverage
+*.tsbuildinfo
+
+# Secrets — NEVER ship into image
+.env
+.env.*
+!.env.example
+infrastructure/env.local.json
+samconfig.toml
+
+# VCS / tooling
+.git
+.gitignore
+.github
+.husky
+.eslintcache
+
+# IDE / OS
+.idea
+.vscode
+.DS_Store
+*.swp
+
+# Logs / runtime
+*.log
+.history
+ai/evals/results
+ai/evals/.promptfoo
+
+# Docker meta
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Plans / large docs (not needed in image)
+docs/.history

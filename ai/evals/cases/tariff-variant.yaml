@@ -1,0 +1,32 @@
+# Screening case — tariff-variant (Octopus Agile / dynamic prices).
+# In F17 explainer mode the optimizer picked the cheapest dynamic-price
+# window already; the AI's job is to acknowledge "low-price" preference
+# in its narrative (mention price, dynamic pricing, etc).
+
+- description: Octopus Agile (dynamic prices, multiple troughs — price vs carbon trade-off)
+  vars:
+    goal: ev-charge
+    region: GB-LON
+    kwhRequired: 40
+    deadline: '2026-05-25T20:00Z'
+    preferences: 'low-price'
+    note: 'On Octopus Agile, settles half-hourly'
+    windowsJson: |
+      [{"id":"w1","windowStart":"2026-05-25T11:00Z","windowEnd":"2026-05-25T15:00Z","avgCarbonGCo2":135,"avgCostPounds":0.04,"score":0.88,"priority":1},
+       {"id":"w2","windowStart":"2026-05-25T13:00Z","windowEnd":"2026-05-25T17:00Z","avgCarbonGCo2":160,"avgCostPounds":0.035,"score":0.85,"priority":2}]
+    contextSummaryJson: |
+      {"priceSource":"entsoe","dataAgeMinutes":6,"unreliableCarbonReadingsExcluded":0}
+  metadata:
+    category: tariff-variant
+    difficulty: medium
+    expectedOutcome: pass
+    tags: [octopus-agile, dynamic-price, trade-off]
+  assert:
+    - type: is-json
+    - type: javascript
+      value: |
+        const j = JSON.parse(output);
+        const blob = [j.summary, ...j.windowNarratives.flatMap(n => [n.reasoning, n.tradeoffs])].join(' ').toLowerCase();
+        // Low-price preference → AI must acknowledge cost/price in prose.
+        return j.refused === false && j.windowNarratives.length === 2
+               && (blob.includes('price') || blob.includes('cost') || blob.includes('cheap'));

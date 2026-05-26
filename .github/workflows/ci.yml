@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Nightly Promptfoo eval against main to catch model-side regressions.
+    - cron: '0 3 * * *'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  lint-test:
+    name: Lint · Typecheck · Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests + coverage
+        run: npm run test:coverage
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+
+  sam-validate:
+    name: SAM template validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+      - name: sam validate
+        run: sam validate --template infrastructure/template.yaml --lint
+
+  build-web:
+    name: Vite build
+    runs-on: ubuntu-latest
+    needs: lint-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:web
+
+  promptfoo-eval:
+    name: Promptfoo AI eval
+    runs-on: ubuntu-latest
+    needs: lint-test
+    # Two gates:
+    #   1. Only run on prompt/ai/eval changes or on the nightly cron.
+    #   2. Skip silently if a reviewer-forked clone hasn't set GEMINI_TEST_KEY
+    #      (otherwise the job would always fail red on every fork).
+    if: |
+      (
+        contains(toJSON(github.event.head_commit.modified), 'prompts/') ||
+        contains(toJSON(github.event.head_commit.modified), 'apps/api/src/infra/ai/') ||
+        contains(toJSON(github.event.head_commit.modified), 'ai/evals/') ||
+        github.event_name == 'schedule'
+      ) && secrets.GEMINI_TEST_KEY != ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Cache promptfoo responses
+        uses: actions/cache@v4
+        with:
+          path: ~/.promptfoo
+          key: promptfoo-${{ hashFiles('ai/evals/**/*.yaml') }}-${{ hashFiles('apps/api/src/prompts/**/*.md') }}
+          restore-keys: |
+            promptfoo-
+
+      - name: Run Promptfoo
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GEMINI_TEST_KEY }}
+        run: |
+          npx promptfoo eval \
+            -c ai/evals/promptfooconfig.yaml \
+            --repeat 2 \
+            --output ai/evals/results/ci.json
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: promptfoo-results
+          path: ai/evals/results/
+
+      - name: PR comment with eval summary
+        if: github.event_name == 'pull_request'
+        uses: promptfoo/promptfoo-action@v1
+        with:
+          openai-api-key: ${{ secrets.GEMINI_TEST_KEY }}
+          config: ai/evals/promptfooconfig.yaml
+          cache: true
+          fail-on-threshold: 0.8

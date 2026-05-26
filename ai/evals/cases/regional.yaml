@@ -1,0 +1,31 @@
+# Screening case — regional.
+# Scotland wind-heavy grid. In F17 explainer mode the AI no longer picks
+# windows — so this case tests whether the AI's prose recognises the
+# regional context (very-low-carbon overnight slot, wind reference).
+
+- description: Scotland — wind-heavy grid, very-low-carbon overnight window
+  vars:
+    goal: ev-charge
+    region: GB-NORTH-SCOTLAND
+    kwhRequired: 40
+    deadline: '2026-05-25T07:00Z'
+    preferences: low-carbon
+    note: ''
+    windowsJson: |
+      [{"id":"w1","windowStart":"2026-05-25T01:00Z","windowEnd":"2026-05-25T05:00Z","avgCarbonGCo2":25,"avgCostPounds":0.028,"score":0.98,"priority":1}]
+    contextSummaryJson: |
+      {"priceSource":"entsoe","dataAgeMinutes":4,"unreliableCarbonReadingsExcluded":0}
+  metadata:
+    category: regional
+    difficulty: easy
+    expectedOutcome: pass
+    tags: [scotland, low-carbon, regional-contrast]
+  assert:
+    - type: is-json
+    - type: javascript
+      value: |
+        // The AI must produce a narrative tagged for this region/profile.
+        const j = JSON.parse(output);
+        const blob = [j.summary, ...j.windowNarratives.flatMap(n => [n.reasoning, n.tradeoffs])].join(' ').toLowerCase();
+        return j.refused === false && j.windowNarratives.length === 1
+               && (blob.includes('wind') || blob.includes('overnight') || blob.includes('low-carbon') || blob.includes('clean'));
