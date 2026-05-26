@@ -143,11 +143,17 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref EnergyInsightsTable
-        - SSMParameterReadPolicy:
-            ParameterName: !Sub '${GeminiKeyParamName}'
-        - SSMParameterReadPolicy:
-            ParameterName: !Sub '${EntsoeKeyParamName}'
+        # Explicit SSM read policy — the SAM-managed SSMParameterReadPolicy
+        # double-slashes the ARN when ParameterName starts with `/`, producing
+        # `parameter//uk-energy/...` and denying access. Hand-roll it instead.
         - Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:GetParameters
+              Resource:
+                - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${GeminiKeyParamName}'
+                - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${EntsoeKeyParamName}'
             - Effect: Allow
               Action: kms:Decrypt
               Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/ssm'

@@ -28,7 +28,7 @@
     "sam:build": "PROJECT_ROOT=\"$PWD\" sam build --template infrastructure/template.yaml",
     "sam:local": "PROJECT_ROOT=\"$PWD\" sam local start-api --template infrastructure/template.yaml --env-vars infrastructure/env.local.json --warm-containers EAGER",
     "sam:validate": "sam validate --template infrastructure/template.yaml --lint",
-    "sam:deploy": "PROJECT_ROOT=\"$PWD\" sam deploy --template infrastructure/template.yaml",
+    "sam:deploy": "PROJECT_ROOT=\"$PWD\" sam deploy --config-file infrastructure/samconfig.toml",
     "deploy:web": "npm run build:web && bash scripts/deploy-web.sh",
     "e2e": "tsx scripts/frontend-e2e-test.ts",
     "eval": "npx promptfoo eval -c ai/evals/promptfooconfig.yaml --output ai/evals/results/latest.json --max-concurrency 2 --no-progress-bar && tsx ai/evals/scripts/analyze-results.ts ai/evals/results/latest.json",

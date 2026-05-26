@@ -8,7 +8,7 @@ build-ApiFunction:
 	  --platform=node \
 	  --target=es2022 \
 	  --format=esm \
-	  --outfile=$(ARTIFACTS_DIR)/api.mjs \
+	  --outfile=$(ARTIFACTS_DIR)/api.js \
 	  --external:@aws-sdk/* \
 	  --external:aws-sdk \
 	  --sourcemap \

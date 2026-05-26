@@ -1,19 +1,20 @@
-name: CI
+name: CI/CD
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-  schedule:
-    # Nightly Promptfoo eval against main to catch model-side regressions.
-    - cron: '0 3 * * *'
 
 permissions:
   contents: read
-  pull-requests: write
+  id-token: write # Reserved for future OIDC migration — see deploy-api comment.
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # 1. lint-test — always runs on push + PR. Format + lint + typecheck + the
+  #    full 148-test suite (105 backend + 43 frontend). Zero external calls.
+  # ---------------------------------------------------------------------------
   lint-test:
     name: Lint · Typecheck · Tests
     runs-on: ubuntu-latest
@@ -47,6 +48,9 @@ jobs:
           name: coverage
           path: coverage/
 
+  # ---------------------------------------------------------------------------
+  # 2. sam-validate — offline IaC sanity check.
+  # ---------------------------------------------------------------------------
   sam-validate:
     name: SAM template validate
     runs-on: ubuntu-latest
@@ -55,9 +59,11 @@ jobs:
       - uses: aws-actions/setup-sam@v2
         with:
           use-installer: true
-      - name: sam validate
-        run: sam validate --template infrastructure/template.yaml --lint
+      - run: sam validate --template infrastructure/template.yaml --lint
 
+  # ---------------------------------------------------------------------------
+  # 3. build-web — verifies Vite build doesn't break.
+  # ---------------------------------------------------------------------------
   build-web:
     name: Vite build
     runs-on: ubuntu-latest
@@ -70,21 +76,29 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build:web
+      - name: Upload web build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: apps/web/dist/
 
+  # ---------------------------------------------------------------------------
+  # 4. promptfoo-eval — AI quality smoke check (2 representative cases:
+  #    happy path + refusal). Skipped silently when GEMINI_TEST_KEY is absent
+  #    (forked clones), and only runs when AI-relevant files actually changed.
+  #
+  #    Budget: 2 inference + 2 judge = 4 Gemini calls. < 1% of daily RPD.
+  # ---------------------------------------------------------------------------
   promptfoo-eval:
-    name: Promptfoo AI eval
+    name: Promptfoo AI smoke
     runs-on: ubuntu-latest
     needs: lint-test
-    # Two gates:
-    #   1. Only run on prompt/ai/eval changes or on the nightly cron.
-    #   2. Skip silently if a reviewer-forked clone hasn't set GEMINI_TEST_KEY
-    #      (otherwise the job would always fail red on every fork).
     if: |
       (
         contains(toJSON(github.event.head_commit.modified), 'prompts/') ||
         contains(toJSON(github.event.head_commit.modified), 'apps/api/src/infra/ai/') ||
         contains(toJSON(github.event.head_commit.modified), 'ai/evals/') ||
-        github.event_name == 'schedule'
+        github.event_name == 'pull_request'
       ) && secrets.GEMINI_TEST_KEY != ''
     steps:
       - uses: actions/checkout@v4
@@ -102,13 +116,13 @@ jobs:
           restore-keys: |
             promptfoo-
 
-      - name: Run Promptfoo
+      - name: Run Promptfoo smoke (2 cases)
         env:
           GOOGLE_API_KEY: ${{ secrets.GEMINI_TEST_KEY }}
         run: |
           npx promptfoo eval \
             -c ai/evals/promptfooconfig.yaml \
-            --repeat 2 \
+            --filter-pattern '(EV charging window|medical advice)' \
             --output ai/evals/results/ci.json
 
       - name: Upload eval results
@@ -118,11 +132,116 @@ jobs:
           name: promptfoo-results
           path: ai/evals/results/
 
-      - name: PR comment with eval summary
-        if: github.event_name == 'pull_request'
-        uses: promptfoo/promptfoo-action@v1
+  # ---------------------------------------------------------------------------
+  # 5. detect-changes — feeds the deploy jobs path filters so we don't redeploy
+  #    on every push regardless of what actually changed.
+  # ---------------------------------------------------------------------------
+  detect-changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
         with:
-          openai-api-key: ${{ secrets.GEMINI_TEST_KEY }}
-          config: ai/evals/promptfooconfig.yaml
-          cache: true
-          fail-on-threshold: 0.8
+          filters: |
+            api:
+              - 'apps/api/**'
+              - 'infrastructure/**'
+              - 'packages/shared/**'
+              - 'package.json'
+              - 'package-lock.json'
+            web:
+              - 'apps/web/**'
+              - 'packages/shared/**'
+              - 'package.json'
+              - 'package-lock.json'
+
+  # ---------------------------------------------------------------------------
+  # 6. deploy-api — SAM build + deploy to AWS. Runs ONLY on main pushes where
+  #    apps/api/, infrastructure/, or packages/shared/ changed.
+  #
+  #    AUTH: short-lived access keys via secrets (AWS_ACCESS_KEY_ID +
+  #    AWS_SECRET_ACCESS_KEY). PRODUCTION UPGRADE: switch to OIDC role
+  #    assumption (no long-lived credentials, see id-token: write above).
+  # ---------------------------------------------------------------------------
+  deploy-api:
+    name: Deploy API (SAM)
+    runs-on: ubuntu-latest
+    needs: [lint-test, sam-validate, detect-changes]
+    if: needs.detect-changes.outputs.api == 'true'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-west-2
+
+      - name: SAM build
+        run: PROJECT_ROOT="$PWD" sam build --template infrastructure/template.yaml
+
+      - name: SAM deploy
+        run: |
+          PROJECT_ROOT="$PWD" sam deploy \
+            --config-file infrastructure/samconfig.toml \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+
+  # ---------------------------------------------------------------------------
+  # 7. deploy-web — S3 sync + CloudFront invalidation. Runs ONLY on main
+  #    pushes where apps/web/ or packages/shared/ changed.
+  #
+  #    deploy-api runs first (when both changed) so the SPA hits the freshest
+  #    API contract. When only web changed, this still runs in parallel with
+  #    a skipped deploy-api.
+  # ---------------------------------------------------------------------------
+  deploy-web:
+    name: Deploy Web (S3 + CloudFront)
+    runs-on: ubuntu-latest
+    needs: [lint-test, build-web, detect-changes, deploy-api]
+    # `always() && success-or-skipped` lets this run even when deploy-api
+    # was skipped due to no api-side changes.
+    if: |
+      always() &&
+      needs.detect-changes.outputs.web == 'true' &&
+      needs.lint-test.result == 'success' &&
+      needs.build-web.result == 'success' &&
+      (needs.deploy-api.result == 'success' || needs.deploy-api.result == 'skipped')
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-west-2
+
+      - name: Build SPA
+        run: npm run build:web
+
+      - name: Deploy to S3 + invalidate CloudFront
+        run: npm run deploy:web

@@ -2,7 +2,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RecommendationsQuery, RecommendationsResponse } from '@uk-energy/shared';
 
-import { ApiError } from '../lib/api-client.js';
+import { ApiError, api } from '../lib/api-client.js';
+
+const SSE_ENABLED = !import.meta.env.PROD;
 
 export type RecommendationStage =
   | 'idle'
@@ -49,6 +51,27 @@ export function useStreamingRecommendations(): UseStreamingRecommendationsResult
       setData(null);
       setError(null);
       setStage('connecting');
+
+      // SSE only works through direct HTTP (Vite dev proxy → Hono).
+      // Production routes through API Gateway REST, which buffers Lambda
+      // responses and never flushes chunks, so EventSource hangs forever.
+      // Fall back to the regular JSON endpoint with synthetic stage events.
+      if (!SSE_ENABLED) {
+        setStage('fetching_data');
+        api
+          .fetchRecommendations(query)
+          .then((payload) => {
+            setStage('validating');
+            setData(payload);
+            setStage('complete');
+            queryClient.invalidateQueries({ queryKey: ['ai-metrics'] });
+          })
+          .catch((err: unknown) => {
+            if (err instanceof ApiError) setError(err);
+            else setError(toApiError(err, 'Recommendations request failed'));
+          });
+        return;
+      }
 
       const params = new URLSearchParams({
         goal: query.goal,
